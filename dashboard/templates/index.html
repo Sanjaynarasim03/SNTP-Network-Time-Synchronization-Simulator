@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNTP Network Time Synchronization Simulator | Network Protocols and Analysis</title>
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+  
+  <!-- Bundled Local Chart.js with CDN Fallback -->
+  <script src="/static/js/chart.min.js"></script>
+  <script>
+    if (typeof Chart === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Top Application Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="brand-badge">NPA MINI-PROJECT</span>
+      <div>
+        <h1 class="brand-title">SNTP Network Time Synchronization Simulator</h1>
+        <p class="brand-subtitle">RFC 4330 / RFC 5905 Protocol Testbed & Analysis</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="server-pill">
+        <span class="pulse-dot"></span>
+        <span>UDP :1123 | Server Time: <strong id="serverClock">--:--:--</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button class="tab-btn active" data-tab="live-sim">📡 Live Simulation</button>
+    <button class="tab-btn" data-tab="packet-inspector">🔬 Packet Inspector (48-Byte)</button>
+    <button class="tab-btn" data-tab="experiments">🧪 Experiments Mode</button>
+    <button class="tab-btn" data-tab="logs-export">💾 Logs & Export</button>
+  </nav>
+
+  <!-- Main Content Area -->
+  <main class="content-area">
+
+    <!-- ==================================================================== -->
+    <!-- TAB 1: LIVE SIMULATION                                               -->
+    <!-- ==================================================================== -->
+    <section id="tab-live-sim" class="tab-panel active">
+      
+      <!-- Top Row KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card offset-kpi">
+          <div class="kpi-title">Calculated Clock Offset (θ)</div>
+          <div class="kpi-value" id="kpiOffset">-- ms</div>
+          <div class="kpi-subtext">Skew relative to Server Reference</div>
+        </div>
+        <div class="kpi-card delay-kpi">
+          <div class="kpi-title">Round-Trip Delay (δ)</div>
+          <div class="kpi-value" id="kpiDelay">-- ms</div>
+          <div class="kpi-subtext">Total forward + return latency</div>
+        </div>
+        <div class="kpi-card status-kpi">
+          <div class="kpi-title">Virtual Clock Error</div>
+          <div class="kpi-value" id="kpiTrueError">-- ms</div>
+          <div class="kpi-subtext">Ground-truth residual error</div>
+        </div>
+        <div class="kpi-card loss-kpi">
+          <div class="kpi-title">Packet Drop Rate</div>
+          <div class="kpi-value" id="kpiLoss">0.0%</div>
+          <div class="kpi-subtext">Timeouts & transit drops</div>
+        </div>
+        <div class="kpi-card server-kpi">
+          <div class="kpi-title">Sync Health State</div>
+          <div class="kpi-value" id="kpiStatus" style="font-size: 1.4rem;">Initialized</div>
+          <div class="kpi-subtext">Phase synchronization status</div>
+        </div>
+      </div>
+
+      <!-- Control Action Bar -->
+      <div class="control-bar">
+        <div class="btn-group">
+          <button id="btnStart" class="btn btn-primary">▶ Start Sync</button>
+          <button id="btnStop" class="btn">⏸ Stop</button>
+          <button id="btnSync" class="btn btn-primary">⚡ Sync Once</button>
+          <button id="btnReset" class="btn btn-danger">↺ Reset</button>
+        </div>
+
+        <div class="client-selector-pills">
+          <button class="client-pill-btn active" data-client="client_a">Client A (LAN)</button>
+          <button class="client-pill-btn" data-client="client_b">Client B (WAN)</button>
+          <button class="client-pill-btn" data-client="client_c">Client C (Satellite)</button>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Grid -->
+      <div class="dashboard-grid">
+        
+        <!-- Sidebar Controls & Sliders -->
+        <aside class="sidebar-card">
+          <div class="sidebar-title">
+            <span>Network & Clock Impairments</span>
+            <span style="font-size: 0.75rem; color: #38bdf8;">Real-Time</span>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderFwdDelay">Forward Delay (Client → Server)</label>
+              <span id="valFwdDelay" class="form-value-badge">10 ms</span>
+            </div>
+            <input type="range" id="sliderFwdDelay" min="1" max="200" value="10" />
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderRetDelay">Return Delay (Server → Client)</label>
+              <span id="valRetDelay" class="form-value-badge">10 ms</span>
+            </div>
+            <input type="range" id="sliderRetDelay" min="1" max="200" value="10" />
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <button id="btnMakeAsymmetric" class="btn" style="width: 100%; font-size: 0.8rem; justify-content: center;">
+              ⚡ Set Asymmetry (10ms Fwd / 90ms Ret)
+            </button>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderJitter">Delay Jitter (± Variance)</label>
+              <span id="valJitter" class="form-value-badge">2 ms</span>
+            </div>
+            <input type="range" id="sliderJitter" min="0" max="50" value="2" />
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderLoss">UDP Packet Loss Rate</label>
+              <span id="valLoss" class="form-value-badge">0 %</span>
+            </div>
+            <input type="range" id="sliderLoss" min="0" max="60" value="0" />
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderDrift">Oscillator Drift Rate</label>
+              <span id="valDrift" class="form-value-badge">15 ppm</span>
+            </div>
+            <input type="range" id="sliderDrift" min="-200" max="200" value="15" />
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="sliderPoll">Poll Interval</label>
+              <span id="valPoll" class="form-value-badge">3 s</span>
+            </div>
+            <input type="range" id="sliderPoll" min="1" max="10" value="3" />
+          </div>
+        </aside>
+
+        <!-- Right Side: Animated Timeline, Charts, Table -->
+        <div>
+          <!-- Animated T1-T4 Timeline -->
+          <div class="timeline-card">
+            <div class="timeline-title-row">
+              <h3 style="font-size: 1rem; color: #fff;">Animated T1-T4 Message Exchange Timeline</h3>
+              <span style="font-size: 0.8rem; color: #9ca3af;">UDP Datagram In-Flight Visualization</span>
+            </div>
+            <div class="timeline-diagram-container">
+              <canvas id="timelineCanvas"></canvas>
+            </div>
+            <!-- Live Formula Substitution Box -->
+            <div id="liveFormulaBox" class="formula-box">
+              <div class="formula-row">
+                <span class="formula-label">Formulas:</span>
+                <span>Offset θ = [ (T2 - T1) + (T3 - T4) ] / 2</span>
+                <span style="color: #64748b;">|</span>
+                <span>Round-Trip Delay δ = (T4 - T1) - (T3 - T2)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-Time Charts Grid -->
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Clock Offset Convergence (θ vs Time)</h3>
+                <span style="font-size: 0.75rem; color: #38bdf8;">Target = 0 ms</span>
+              </div>
+              <div class="chart-container">
+                <canvas id="offsetChart"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Round-Trip Delay Stability (δ vs Time)</h3>
+                <span style="font-size: 0.75rem; color: #a855f7;">Measured Latency</span>
+              </div>
+              <div class="chart-container">
+                <canvas id="delayChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Color-Coded Request Log Table -->
+          <div class="table-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="font-size: 1rem; color: #fff;">Recent Synchronization Datagrams</h3>
+              <span style="font-size: 0.78rem; color: #9ca3af;">Last 15 Exchanges</span>
+            </div>
+            <div class="table-wrapper">
+              <table class="sync-table">
+                <thead>
+                  <tr>
+                    <th>Seq</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>T1 (Client Tx)</th>
+                    <th>T2 (Server Rx)</th>
+                    <th>T3 (Server Tx)</th>
+                    <th>T4 (Client Rx)</th>
+                    <th>Offset (θ)</th>
+                    <th>Delay (δ)</th>
+                  </tr>
+                </thead>
+                <tbody id="syncTableBody">
+                  <!-- Populated by JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 2: PACKET INSPECTOR                                              -->
+    <!-- ==================================================================== -->
+    <section id="tab-packet-inspector" class="tab-panel">
+      <div class="inspector-layout">
+        <div class="packet-diagram-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="font-size: 1.2rem; color: #fff;">RFC 4330 48-Byte SNTP Datagram Structure</h2>
+            <button class="btn" onclick="loadPacketInspector()">🔄 Refresh Packet</button>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+            Click any field to view decoded values, binary representations, and RFC specifications.
+          </p>
+
+          <div class="packet-diagram-grid">
+            <!-- Row 1: Header Byte 0-3 -->
+            <div class="packet-row">
+              <div class="packet-field" id="fLI">
+                <div class="field-name">LI (Leap Indicator)</div>
+                <div class="field-bits">Bits 7-6</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fVN">
+                <div class="field-name">VN (Version)</div>
+                <div class="field-bits">Bits 5-3</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fMode">
+                <div class="field-name">Mode</div>
+                <div class="field-bits">Bits 2-0</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fStratum">
+                <div class="field-name">Stratum</div>
+                <div class="field-bits">Byte 1</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <!-- Row 2: Poll, Precision, Root Delay -->
+            <div class="packet-row">
+              <div class="packet-field" id="fPoll">
+                <div class="field-name">Poll Interval</div>
+                <div class="field-bits">Byte 2</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fPrecision">
+                <div class="field-name">Precision</div>
+                <div class="field-bits">Byte 3</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fRootDelay" style="grid-column: span 2;">
+                <div class="field-name">Root Delay</div>
+                <div class="field-bits">Bytes 4-7 (32-bit Fixed Point)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <!-- Row 3: Root Dispersion, Reference Identifier -->
+            <div class="packet-row">
+              <div class="packet-field" id="fRootDisp" style="grid-column: span 2;">
+                <div class="field-name">Root Dispersion</div>
+                <div class="field-bits">Bytes 8-11 (32-bit Fixed Point)</div>
+                <div class="field-value">--</div>
+              </div>
+              <div class="packet-field" id="fRefID" style="grid-column: span 2;">
+                <div class="field-name">Reference Identifier</div>
+                <div class="field-bits">Bytes 12-15 (4-byte ASCII/ID)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <!-- 64-Bit Timestamps -->
+            <div class="packet-row full">
+              <div class="packet-field" id="fRefTS">
+                <div class="field-name">Reference Timestamp (Local Clock Last Set)</div>
+                <div class="field-bits">Bytes 16-23 (64 bits: 32s sec + 32s frac)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <div class="packet-row full">
+              <div class="packet-field" id="fOrigTS">
+                <div class="field-name">T1: Originate Timestamp (Departed Client)</div>
+                <div class="field-bits">Bytes 24-31 (64 bits)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <div class="packet-row full">
+              <div class="packet-field" id="fRecvTS">
+                <div class="field-name">T2: Receive Timestamp (Arrived at Server)</div>
+                <div class="field-bits">Bytes 32-39 (64 bits)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+
+            <div class="packet-row full">
+              <div class="packet-field" id="fTxTS">
+                <div class="field-name">T3: Transmit Timestamp (Departed Server)</div>
+                <div class="field-bits">Bytes 40-47 (64 bits)</div>
+                <div class="field-value">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Field Details Sidebar & Raw Hex -->
+        <div>
+          <div id="fieldDetailCard" class="field-details-card" style="margin-bottom: 20px;">
+            <h3 style="color: #38bdf8; font-size: 1.1rem; margin-bottom: 8px;">Field Specification Inspector</h3>
+            <p style="font-size: 0.88rem; color: #9ca3af;">
+              Click on any field on the left diagram to view bit offsets, hexadecimal breakdown, and RFC 4330 meaning.
+            </p>
+          </div>
+
+          <div class="field-details-card">
+            <h3 style="font-size: 0.95rem; color: #fff; margin-bottom: 8px;">Raw 48-Byte Hex Dump (Wireshark Wire View)</h3>
+            <pre id="inspectorHexDump" class="raw-hex-box">Waiting for packet capture...</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 3: EXPERIMENTS MODE                                              -->
+    <!-- ==================================================================== -->
+    <section id="tab-experiments" class="tab-panel">
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 1.3rem; color: #fff;">One-Click Scenario Experiments</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted);">
+          Pre-configured laboratory scenarios demonstrating fundamental networking theorems for your project viva.
+        </p>
+      </div>
+
+      <div class="experiments-grid">
+        <!-- Scenario 1: Ideal -->
+        <div class="experiment-card">
+          <div>
+            <span class="exp-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">Scenario 1</span>
+            <h3 class="exp-card-title">Ideal Network</h3>
+            <p class="exp-card-desc">Symmetric delay (15 ms each way), 0 jitter, 0 packet loss, 0 drift.</p>
+          </div>
+          <button class="btn btn-success" onclick="runExperimentScenario('ideal')">▶ Run Ideal Test</button>
+        </div>
+
+        <!-- Scenario 2: Jitter -->
+        <div class="experiment-card">
+          <div>
+            <span class="exp-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">Scenario 2</span>
+            <h3 class="exp-card-title">High Network Jitter</h3>
+            <p class="exp-card-desc">Extreme delay variance (±25 ms jitter). Shows fluctuating offset estimates.</p>
+          </div>
+          <button class="btn btn-purple" onclick="runExperimentScenario('jitter')">▶ Run Jitter Test</button>
+        </div>
+
+        <!-- Scenario 3: Asymmetry -->
+        <div class="experiment-card">
+          <div>
+            <span class="exp-badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">Scenario 3</span>
+            <h3 class="exp-card-title">Asymmetric Delay</h3>
+            <p class="exp-card-desc">10 ms forward vs 90 ms return. Proves SNTP offset error = -half the asymmetry!</p>
+          </div>
+          <button class="btn btn-primary" onclick="runExperimentScenario('asymmetry')">▶ Run Asymmetry Test</button>
+        </div>
+
+        <!-- Scenario 4: Packet Loss -->
+        <div class="experiment-card">
+          <div>
+            <span class="exp-badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">Scenario 4</span>
+            <h3 class="exp-card-title">30% Packet Loss</h3>
+            <p class="exp-card-desc">Severe UDP drop rate. Demonstrates timeouts, lost sync cycles, and retries.</p>
+          </div>
+          <button class="btn btn-danger" onclick="runExperimentScenario('packet_loss')">▶ Run Loss Test</button>
+        </div>
+
+        <!-- Scenario 5: Clock Drift -->
+        <div class="experiment-card">
+          <div>
+            <span class="exp-badge" style="background: rgba(6, 182, 212, 0.2); color: #22d3ee;">Scenario 5</span>
+            <h3 class="exp-card-title">Large Clock Drift</h3>
+            <p class="exp-card-desc">500 ppm oscillator drift rate. Shows saw-tooth drift between poll intervals.</p>
+          </div>
+          <button class="btn btn-primary" onclick="runExperimentScenario('clock_drift')">▶ Run Drift Test</button>
+        </div>
+      </div>
+
+      <!-- Result Panel -->
+      <div id="expResultPanel" class="exp-result-panel" style="display: none;">
+        <h3 id="expResultTitle" style="font-size: 1.2rem; color: #fff; margin-bottom: 8px;">Simulating Scenario...</h3>
+        
+        <div id="expLoadingIndicator" style="display: none; padding: 24px; text-align: center; color: #38bdf8; font-weight: 600;">
+          ⏳ Injecting network impairments and computing timestamp telemetry...
+        </div>
+
+        <div id="expResultContent">
+          <div style="height: 260px; margin: 16px 0;">
+            <canvas id="expChart"></canvas>
+          </div>
+
+          <div class="exp-explanation-box">
+            <h4 style="color: #38bdf8; margin-bottom: 6px;">Academic Analysis & Viva Explanation:</h4>
+            <p id="expExplanationText"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 4: LOGS & EXPORT                                                 -->
+    <!-- ==================================================================== -->
+    <section id="tab-logs-export" class="tab-panel">
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 1.3rem; color: #fff;">Telemetry Logs & Data Export</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted);">
+          Export empirical data for your project report tables, viva charts, and lab verification.
+        </p>
+      </div>
+
+      <div class="control-bar" style="margin-bottom: 20px;">
+        <div class="btn-group">
+          <button id="btnExportCSV" class="btn btn-success">
+            📥 Download Full Logs (CSV)
+          </button>
+          <button id="btnExportPNG" class="btn btn-primary">
+            🖼 Export Offset Chart (PNG)
+          </button>
+        </div>
+      </div>
+
+      <div class="theory-card">
+        <h3>Localhost Wireshark Capture Instructions</h3>
+        <p>To capture and inspect real SNTP UDP packets generated by this simulator in Wireshark:</p>
+        <ol style="margin-left: 20px; line-height: 1.8;">
+          <li>Open Wireshark and select the <strong>Loopback (lo / lo0)</strong> interface.</li>
+          <li>Set the display filter to: <code style="color: #38bdf8;">udp.port == 1123</code> or <code style="color: #38bdf8;">ntp</code>.</li>
+          <li>Click <strong>"Start Sync"</strong> or <strong>"Sync Once"</strong> in this dashboard.</li>
+          <li>Inspect the 48-byte UDP datagram in Wireshark and verify that the fields (LI, VN=4, Mode=3/4, Stratum, Timestamps) match our <strong>Packet Inspector</strong> tab exactly!</li>
+        </ol>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Application Footer -->
+  <footer class="app-footer">
+    SNTP Network Time Synchronization Simulator &bull; Network Protocols and Analysis &bull; Runs 100% Offline on Localhost
+  </footer>
+
+  <!-- Application Script -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
